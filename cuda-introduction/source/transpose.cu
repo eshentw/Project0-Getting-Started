@@ -19,16 +19,18 @@
 __global__ void copyKernel(const float* const a, float* const b, const unsigned sizeX, const unsigned sizeY)
 {
     // TODO 6a: Compute the global index for each thread along x and y dimentions.
-    unsigned i = 0;
-    unsigned j = 0;;
+    unsigned i = blockIdx.y * blockDim.y + threadIdx.y;
+    unsigned j = blockIdx.x * blockDim.x + threadIdx.x;
 
     // TODO 6b: Check if i or j are out of bounds. If they are, return.
-
+    if (i >= sizeY || j >= sizeX)
+        return;
     // TODO 6c: Compute global 1D index from i and j
-    unsigned index = 0;
+    unsigned index = i * sizeX + j; // Compute index (i,j) from matrix A
 
     // TODO 6d: Copy data from A to B. Note that in copy kernel source and destination indices are the same
     // b[] = a[];
+    b[index] = a[index];
 }
 
 // TODO 11: Implement the transpose kernel
@@ -38,16 +40,18 @@ __global__ void copyKernel(const float* const a, float* const b, const unsigned 
 __global__ void matrixTransposeNaive(const float* const a, float* const b, const unsigned sizeX, const unsigned sizeY)
 {
     // TODO 11a: Compute the global index for each thread along x and y dimentions.
-    unsigned i = 0;
-    unsigned j = 0;
+    unsigned i = blockIdx.y * blockDim.y + threadIdx.y;
+    unsigned j = blockIdx.x * blockDim.x + threadIdx.x;
 
     // TODO 11b: Check if i or j are out of bounds. If they are, return.
-
+    if (i >= sizeY || j >= sizeX)
+        return;
     // TODO 11c: Compute index_in as (i,j) (same as index in copy kernel) and index_out as (j,i)
-    unsigned index_in  = 0;  // Compute input index (i,j) from matrix A
-    unsigned index_out = 0;  // Compute output index (j,i) in matrix B = transpose(A)
+    unsigned index_in  = i * sizeX + j;  // Compute input index (i,j) from matrix A
+    unsigned index_out = j * sizeY + i;  // Compute output index (j,i) in matrix B = transpose(A)
 
     // TODO 11d: Copy data from A to B using transpose indices
+    b[index_out] = a[index_in];
 }
 
 int main(int argc, char *argv[])
@@ -82,9 +86,10 @@ int main(int argc, char *argv[])
     float *d_a, *d_b;
 
     // TODO 2: Allocate memory on the device for d_a and d_b.
-
+    CUDA(cudaMalloc((void **)&d_a, sizeX * sizeY * sizeof(float)));
+    CUDA(cudaMalloc((void **)&d_b, sizeX * sizeY * sizeof(float)));
     // TODO 3: Copy array contents of A from the host (CPU) to the device (GPU)
-
+    CUDA(cudaMemcpy(d_a, a, sizeX * sizeY * sizeof(float), cudaMemcpyHostToDevice));
     CUDA(cudaDeviceSynchronize());
 
     ////////////////////////////////////////////////////////////
@@ -97,13 +102,20 @@ int main(int argc, char *argv[])
         // TODO 4: Assign a 2D distribution of BS_X x BS_Y x 1 CUDA threads within
         // Calculate number of blocks along X and Y in a 2D CUDA "grid" using divup
         DIMS dims;
-        dims.dimBlock = dim3(1, 1, 1);
-        dims.dimGrid = dim3(1, 1, 1);
+        unsigned BS_X = 16;
+        unsigned BS_Y = 16;
+        dims.dimBlock = dim3(BS_X, BS_Y, 1);
+        unsigned BlockX = divup(sizeX, BS_X);
+        unsigned BlockY = divup(sizeY, BS_Y);
+        dims.dimGrid  = dim3(BlockX, BlockY, 1);
+        std::cout << "Launching kernel with " << dims.dimGrid.x << " x " << dims.dimGrid.y << " blocks of "
+                  << dims.dimBlock.x << " x " << dims.dimBlock.y << " threads" << std::endl;
 
         // LOOK: Launch the copy kernel
         copyKernel<<<dims.dimGrid, dims.dimBlock>>>(d_a, d_b, sizeX, sizeY);
 
         // TODO 5: copy the answer back to the host (CPU) from the device (GPU)
+        CUDA(cudaMemcpy(b, d_b, sizeX * sizeY * sizeof(float), cudaMemcpyDeviceToHost));
 
         // LOOK: Use compareReferenceAndResult to check the result
         compareReferenceAndResult(a_gold, b, sizeX * sizeY);
@@ -121,14 +133,19 @@ int main(int argc, char *argv[])
         // TODO 8: Assign a 2D distribution of BS_X x BS_Y x 1 CUDA threads within
         // Calculate number of blocks along X and Y in a 2D CUDA "grid" using divup
         DIMS dims;
-        dims.dimBlock = dim3(1, 1, 1);
-        dims.dimGrid = dim3(1, 1, 1);
-
+        unsigned BS_X = 16;
+        unsigned BS_Y = 16;
+        dims.dimBlock = dim3(BS_X, BS_Y, 1);
+        unsigned BlockX = divup(sizeX, BS_X);
+        unsigned BlockY = divup(sizeY, BS_Y);
+        dims.dimGrid  = dim3(BlockX, BlockY, 1);
         // TODO 9: Launch the matrix transpose kernel
         // matrixTransposeNaive<<<>>>(......);
-
+        std::cout << "Launching kernel with " << dims.dimGrid.x << " x " << dims.dimGrid.y << " blocks of "
+                  << dims.dimBlock.x << " x " << dims.dimBlock.y << " threads" << std::endl;
+        matrixTransposeNaive<<<dims.dimGrid, dims.dimBlock>>>(d_a, d_b, sizeX, sizeY);
         // TODO 10: copy the answer back to the host (CPU) from the device (GPU)
-
+        CUDA(cudaMemcpy(b, d_b, sizeX * sizeY * sizeof(float), cudaMemcpyDeviceToHost));
         // LOOK: Use compareReferenceAndResult to check the result
         compareReferenceAndResult(b_gold, b, sizeX * sizeY);
     }

@@ -9,13 +9,16 @@ unsigned divup(unsigned size, unsigned div)
 {
     // TODO: implement a 1 line function to return the divup operation.
     // Note: You only need to use addition, subtraction, and division operations.
-    return 0;
+    // unsigned result =  ceil(static_cast<float>(size) / static_cast<float>(div));
+    unsigned result = (size + div - 1) / div;
+    return result;
 }
 
 void clearHostAndDeviceArray(float *res, float *dev_res, unsigned size, const int value)
-{
+{   
+    // For host
     std::fill(res, res + size, value);
-
+    // For device
     // LOOK: See how we fill the array with the same number to clear it.
     CUDA(cudaMemset(dev_res, value, size * sizeof(float)));
 }
